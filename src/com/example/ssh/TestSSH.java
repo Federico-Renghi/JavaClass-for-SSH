@@ -1,3 +1,5 @@
+package com.example.ssh;
+
 public class TestSSH {
     public static void main(String[] args) {
         try {
