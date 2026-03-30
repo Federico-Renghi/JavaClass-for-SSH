@@ -3,8 +3,6 @@ package com.example.ssh;
 import org.apache.sshd.client.SshClient;
 import org.apache.sshd.client.channel.ClientChannel;
 import org.apache.sshd.client.channel.ClientChannelEvent;
-import org.apache.sshd.client.keyverifier.AcceptAllServerKeyVerifier;
-import org.apache.sshd.client.keyverifier.KnownHostsServerKeyVerifier;
 import org.apache.sshd.client.session.ClientSession;
 import org.apache.sshd.common.config.keys.FilePasswordProvider;
 import org.apache.sshd.common.util.io.resource.PathResource;
@@ -84,21 +82,9 @@ public class SSHClient {
         log.info("Authentication successful");
     }
 
-    // INIT CLIENT (con known_hosts)
+    // INIT CLIENT
     private void initClient() {
         client = SshClient.setUpDefaultClient();
-
-        Path knownHosts = Path.of(System.getProperty("user.home"), ".ssh", "known_hosts");
-
-        log.info("Initializing SSH client with known_hosts at {}", knownHosts);
-
-        client.setServerKeyVerifier(
-                new KnownHostsServerKeyVerifier(
-                        AcceptAllServerKeyVerifier.INSTANCE,
-                        knownHosts
-                )
-        );
-
         client.start();
 
         log.info("SSH client started");

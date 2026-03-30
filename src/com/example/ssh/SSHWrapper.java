@@ -6,10 +6,10 @@ public class SSHWrapper
         SSHClient client = null;
         try {
             client = new SSHClient(
-                    "HOST",
-                    22,
-                    "USERNAME",
-                    "PASSWORD"
+                    "localhost",
+                    2222,
+                    "test",
+                    "test"
             );
 
             String result = client.executeCommand("echo 'hello'");
