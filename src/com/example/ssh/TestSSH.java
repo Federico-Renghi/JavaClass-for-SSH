@@ -10,10 +10,10 @@ public class TestSSH {
                     "test",
                     "test"
             );
-            /*
+
             System.out.println("whoami:");
             System.out.println(client.executeCommand("whoami"));
-
+/*
             System.out.println("pwd:");
             System.out.println(client.executeCommand("pwd"));
 

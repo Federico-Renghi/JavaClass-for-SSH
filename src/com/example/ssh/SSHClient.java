@@ -8,9 +8,6 @@ import org.apache.sshd.common.config.keys.FilePasswordProvider;
 import org.apache.sshd.common.util.io.resource.PathResource;
 import org.apache.sshd.common.util.security.SecurityUtils;
 
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
 import java.io.ByteArrayOutputStream;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
@@ -19,9 +16,12 @@ import java.nio.file.Path;
 import java.security.KeyPair;
 import java.util.Collections;
 
+import java.util.logging.Logger;
+import java.util.logging.Level;
+
 public class SSHClient {
 
-    private static final Logger log = LoggerFactory.getLogger(SSHClient.class);
+    private static final Logger log = Logger.getLogger(SSHClient.class.getName());
 
     private static final long TIMEOUT = 10_000;
     private static final int MAX_RETRIES = 3;
@@ -37,7 +37,7 @@ public class SSHClient {
 
         session = connectWithRetry(host, port, username);
 
-        log.info("Authenticating with password for user {}", username);
+        log.info("Authenticating with password for user " + username);
 
         session.addPasswordIdentity(password);
         session.auth().verify(TIMEOUT);
@@ -56,7 +56,7 @@ public class SSHClient {
 
         session = connectWithRetry(host, port, username);
 
-        log.info("Authenticating with private key {} for user {}", privateKeyPath, username);
+        log.info("Authenticating with private key " + privateKeyPath + " for user " + username);
 
         FilePasswordProvider provider = (passphrase == null)
                 ? FilePasswordProvider.EMPTY
@@ -72,7 +72,7 @@ public class SSHClient {
             );
 
             for (KeyPair key : keys) {
-                log.debug("Adding key identity: {}", key.getPublic().getAlgorithm());
+                log.fine("Adding key identity: " + key.getPublic().getAlgorithm());
                 session.addPublicKeyIdentity(key);
             }
         }
@@ -96,7 +96,7 @@ public class SSHClient {
 
         for (int attempt = 1; attempt <= MAX_RETRIES; attempt++) {
             try {
-                log.info("Connecting to {}:{} as {} (attempt {}/{})", host, port, username, attempt, MAX_RETRIES);
+                log.info("Connecting to " + host + ":" + port + " as " + username + " (attempt " + attempt + "/" + MAX_RETRIES + ")");
 
                 ClientSession session = client.connect(username, host, port)
                         .verify(TIMEOUT)
@@ -106,7 +106,7 @@ public class SSHClient {
                 return session;
 
             } catch (Exception e) {
-                log.warn("Connection attempt {} failed: {}", attempt, e.getMessage());
+                log.log(Level.WARNING, "Connection attempt " + attempt + " failed: " + e.getMessage(), e);
                 lastException = e;
 
                 if (attempt < MAX_RETRIES) {
@@ -121,7 +121,7 @@ public class SSHClient {
     // ESECUZIONE COMANDO
     public String executeCommand(String command) throws Exception {
 
-        log.info("Executing command: {}", command);
+        log.info("Executing command: " + command);
 
         try (ByteArrayOutputStream out = new ByteArrayOutputStream();
              ByteArrayOutputStream err = new ByteArrayOutputStream();
@@ -139,11 +139,11 @@ public class SSHClient {
             String stdout = out.toString(StandardCharsets.UTF_8);
             String stderr = err.toString(StandardCharsets.UTF_8);
 
-            log.debug("Command stdout: {}", stdout);
-            log.debug("Command stderr: {}", stderr);
+            log.fine("Command stdout: " + stdout);
+            log.fine("Command stderr: " + stderr);
 
             if (exitStatus != null && exitStatus != 0) {
-                log.error("Command failed with exit code {}: {}", exitStatus, stderr);
+                log.severe("Command failed with exit code " + exitStatus + ": " + stderr);
                 throw new RuntimeException(
                         "Command failed (" + exitStatus + "): " + stderr
                 );
@@ -163,7 +163,7 @@ public class SSHClient {
                 log.info("Session closed");
             }
         } catch (Exception e) {
-            log.error("Error closing session", e);
+            log.log(Level.SEVERE, "Error closing session", e);
         }
 
         try {
@@ -172,7 +172,7 @@ public class SSHClient {
                 log.info("Client stopped");
             }
         } catch (Exception e) {
-            log.error("Error stopping client", e);
+            log.log(Level.SEVERE, "Error stopping client", e);
         }
     }
 }
