@@ -8,7 +8,9 @@ public class TestSSH {
                     2222,
                     //9999,  porta sbagliata per test
                     "test",
-                    "test"
+                    "test",
+                    null,
+                    null
             );
 
             System.out.println("whoami:");

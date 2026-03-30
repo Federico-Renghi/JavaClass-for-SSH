@@ -15,9 +15,8 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.KeyPair;
 import java.util.Collections;
-
-import java.util.logging.Logger;
 import java.util.logging.Level;
+import java.util.logging.Logger;
 
 public class SSHClient {
 
@@ -27,76 +26,60 @@ public class SSHClient {
     private static final int MAX_RETRIES = 3;
     private static final long RETRY_DELAY = 2000;
 
-    private SshClient client;
-    private ClientSession session;
+    private final SshClient client;
+    private final ClientSession session;
 
+    //costruttore
+    public SSHClient(
+            String host,
+            int port,
+            String username,
+            String password,
+            Path privateKeyPath,
+            String passphrase
+    ) throws Exception {
 
-    // COSTRUTTORE PASSWORD
-    public SSHClient(String host, int port, String username, String password) throws Exception {
-        initClient();
+        validateAuth(password, privateKeyPath);
 
-        session = connectWithRetry(host, port, username);
-
-        log.info("Authenticating with password for user " + username);
-
-        session.addPasswordIdentity(password);
-        session.auth().verify(TIMEOUT);
-
-        log.info("Authentication successful");
-    }
-
-    // COSTRUTTORE CHIAVE (senza passphrase)
-    public SSHClient(String host, int port, String username, Path privateKeyPath) throws Exception {
-        this(host, port, username, privateKeyPath, null);
-    }
-
-    // COSTRUTTORE CHIAVE (con passphrase)
-    public SSHClient(String host, int port, String username, Path privateKeyPath, String passphrase) throws Exception {
-        initClient();
-
-        session = connectWithRetry(host, port, username);
-
-        log.info("Authenticating with private key " + privateKeyPath + " for user " + username);
-
-        FilePasswordProvider provider = (passphrase == null)
-                ? FilePasswordProvider.EMPTY
-                : FilePasswordProvider.of(passphrase);
-
-        try (InputStream inputStream = Files.newInputStream(privateKeyPath)) {
-
-            Iterable<KeyPair> keys = SecurityUtils.loadKeyPairIdentities(
-                    session,
-                    new PathResource(privateKeyPath),
-                    inputStream,
-                    provider
-            );
-
-            for (KeyPair key : keys) {
-                log.fine("Adding key identity: " + key.getPublic().getAlgorithm());
-                session.addPublicKeyIdentity(key);
-            }
-        }
-
-        session.auth().verify(TIMEOUT);
-
-        log.info("Authentication successful");
-    }
-
-    // INIT CLIENT
-    private void initClient() {
         client = SshClient.setUpDefaultClient();
         client.start();
 
         log.info("SSH client started");
+
+        session = connectWithRetry(host, port, username);
+
+        if (password != null) {
+            authenticateWithPassword(password, username);
+        } else {
+            authenticateWithKey(privateKeyPath, passphrase, username);
+        }
+
+        log.info("Authentication successful");
     }
 
-    // RETRY CONNECTION
+    // validazione
+    private void validateAuth(String password, Path key) {
+        if (password != null && key != null) {
+            throw new IllegalArgumentException(
+                    "Specify either password or private key, not both"
+            );
+        }
+
+        if (password == null && key == null) {
+            throw new IllegalArgumentException(
+                    "No authentication method provided"
+            );
+        }
+    }
+
+    // retry connessione
     private ClientSession connectWithRetry(String host, int port, String username) throws Exception {
         Exception lastException = null;
 
         for (int attempt = 1; attempt <= MAX_RETRIES; attempt++) {
             try {
-                log.info("Connecting to " + host + ":" + port + " as " + username + " (attempt " + attempt + "/" + MAX_RETRIES + ")");
+                log.info("Connecting to " + host + ":" + port + " as " + username +
+                        " (attempt " + attempt + "/" + MAX_RETRIES + ")");
 
                 ClientSession session = client.connect(username, host, port)
                         .verify(TIMEOUT)
@@ -106,7 +89,7 @@ public class SSHClient {
                 return session;
 
             } catch (Exception e) {
-                log.log(Level.WARNING, "Connection attempt " + attempt + " failed: " + e.getMessage(), e);
+                log.log(Level.WARNING, "Connection attempt " + attempt + " failed", e);
                 lastException = e;
 
                 if (attempt < MAX_RETRIES) {
@@ -115,10 +98,42 @@ public class SSHClient {
             }
         }
 
-        throw new RuntimeException("Failed to connect after " + MAX_RETRIES + " attempts", lastException);
+        throw new RuntimeException("Failed to connect after retries", lastException);
     }
 
-    // ESECUZIONE COMANDO
+    // metodi di autenticazione
+    private void authenticateWithPassword(String password, String username) throws Exception {
+        log.info("Authenticating with password for user " + username);
+
+        session.addPasswordIdentity(password);
+        session.auth().verify(TIMEOUT);
+    }
+
+    private void authenticateWithKey(Path keyPath, String passphrase, String username) throws Exception {
+        log.info("Authenticating with private key " + keyPath + " for user " + username);
+
+        FilePasswordProvider provider = (passphrase == null)
+                ? FilePasswordProvider.EMPTY
+                : FilePasswordProvider.of(passphrase);
+
+        try (InputStream inputStream = Files.newInputStream(keyPath)) {
+
+            Iterable<KeyPair> keys = SecurityUtils.loadKeyPairIdentities(
+                    session,
+                    new PathResource(keyPath),
+                    inputStream,
+                    provider
+            );
+
+            for (KeyPair key : keys) {
+                session.addPublicKeyIdentity(key);
+            }
+        }
+
+        session.auth().verify(TIMEOUT);
+    }
+
+    // metodo per eseguire i comandi
     public String executeCommand(String command) throws Exception {
 
         log.info("Executing command: " + command);
@@ -139,28 +154,22 @@ public class SSHClient {
             String stdout = out.toString(StandardCharsets.UTF_8);
             String stderr = err.toString(StandardCharsets.UTF_8);
 
-            log.fine("Command stdout: " + stdout);
-            log.fine("Command stderr: " + stderr);
-
             if (exitStatus != null && exitStatus != 0) {
-                log.severe("Command failed with exit code " + exitStatus + ": " + stderr);
-                throw new RuntimeException(
-                        "Command failed (" + exitStatus + "): " + stderr
-                );
+                log.severe("Command failed (" + exitStatus + "): " + stderr);
+                throw new RuntimeException("Command failed (" + exitStatus + "): " + stderr);
             }
 
             return stdout;
         }
     }
 
-    // CHIUDE CONNESSIONE
+    // chiudi connessione
     public void close() {
         log.info("Closing SSH connection");
 
         try {
             if (session != null && session.isOpen()) {
                 session.close(true);
-                log.info("Session closed");
             }
         } catch (Exception e) {
             log.log(Level.SEVERE, "Error closing session", e);
@@ -169,7 +178,6 @@ public class SSHClient {
         try {
             if (client != null && !client.isClosed()) {
                 client.stop();
-                log.info("Client stopped");
             }
         } catch (Exception e) {
             log.log(Level.SEVERE, "Error stopping client", e);
